@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CIA SYBAU?</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        html, body {
+            overflow: hidden;
+            width: 100%;
+            height: 100%;
+        }
+
+        body {
+            color: #fff;
+            font-family: "Orbitron", "Archivo Black", monospace;
+            font-size: clamp(1em, 4vw, 3em);
+            text-align: center;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+            user-select: none;
+            cursor: none;
+        }
+
+        body::-webkit-scrollbar {
+            display: none;
+        }
+
+        .canvas-layer {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .webgl {
+            z-index: 3;
+        }
+
+        #c {
+            z-index: 4;
+            mix-blend-mode: screen;
+        }
+
+        #cia-canvas {
+            z-index: 3;
+            pointer-events: auto;
+            cursor: crosshair;
+        }
+
+        @media (max-width: 768px) {
+            body {
+                font-size: clamp(0.8em, 5vw, 2em);
+            }
+        }
+
+        @media (max-width: 480px) {
+            body {
+                font-size: clamp(0.6em, 6vw, 1.5em);
+            }
+        }
+
+        .cursor-trail {
+            position: fixed;
+            width: 4px;
+            height: 4px;
+            background: radial-gradient(circle, #00ffff, transparent);
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 10;
+            mix-blend-mode: screen;
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+    </style>
+</head>
+<body>
+    <canvas class="webgl canvas-layer"></canvas>
+    <canvas id="c" class="canvas-layer"></canvas>
+    <canvas id="cia-canvas" class="canvas-layer"></canvas>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <script>
+        function initGalaxy() {
+            const canvas = document.querySelector('canvas.webgl');
+            const scene = new THREE.Scene();
+
+            const parameters = {
+                count: window.innerWidth > 768 ? 80000 : 40000,
+                size: window.innerWidth > 768 ? 0.02 : 0.025,
+                radius: 3.5,
+                branches: 5,
+                spin: 4,
+                randomness: 8,
+                randomnessPower: 5,
+                insideColor: '#ff6030',
+                outsideColor: '#1a73e8',
+                centerColor: '#ffffff'
+            };
+
+            let material = null;
+            let geometry = null;
+            let points = null;
+
+            const generateGalaxy = () => {
+                if(points !== null){
+                    geometry.dispose();
+                    material.dispose();
+                    scene.remove(points);
+                }
+
+                material = new THREE.PointsMaterial({
+                    size: parameters.size,
+                    sizeAttenuation: true,
+                    depthWrite: false,
+                    blending: THREE.AdditiveBlending,
+                    vertexColors: true,
+                    transparent: true,
+                    opacity: 9.0
+                });
+
+                geometry = new THREE.BufferGeometry();
+                const positions = new Float32Array(parameters.count * 3);
+                const colors = new Float32Array(parameters.count * 3);
+                
+                const colorInside = new THREE.Color(parameters.insideColor);
+                const colorOutside = new THREE.Color(parameters.outsideColor);
+                const colorCenter = new THREE.Color(parameters.centerColor);
+
+                for(let i = 0; i < parameters.count; i++){
+                    const i3 = i * 3;
+                    const radius = Math.pow(Math.random(), 2) * parameters.radius;
+                    const spinAngle = radius * parameters.spin;
+                    const branchAngle = ((i % parameters.branches) / parameters.branches) * Math.PI * 2;
+
+                    const randomX = Math.pow(Math.random(), parameters.randomnessPower) * (Math.random() < 0.5 ? 1 : -1) * parameters.randomness * radius * 0.1;
+                    const randomY = Math.pow(Math.random(), parameters.randomnessPower) * (Math.random() < 0.5 ? 1 : -1) * parameters.randomness * radius * 0.1;
+                    const randomZ = Math.pow(Math.random(), parameters.randomnessPower) * (Math.random() < 0.5 ? 1 : -1) * parameters.randomness * radius * 0.1;
+
+                    positions[i3] = Math.cos(branchAngle + spinAngle) * radius + randomX;
+                    positions[i3 + 1] = randomY;
+                    positions[i3 + 2] = Math.sin(branchAngle + spinAngle) * radius + randomZ;
+
+                    const mixedColor = colorInside.clone();
+                    const radiusRatio = radius / parameters.radius;
+                    
+                    if(radiusRatio < 0.1) {
+                        mixedColor.lerp(colorCenter, 1 - radiusRatio * 10);
+                    } else {
+                        mixedColor.lerp(colorOutside, radiusRatio);
+                    }
+
+                    colors[i3] = mixedColor.r;
+                    colors[i3 + 1] = mixedColor.g;
+                    colors[i3 + 2] = mixedColor.b;
+                }
+
+                geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+                points = new THREE.Points(geometry, material);
+                scene.add(points);
+            };
+
+            const sizes = {
+                width: window.innerWidth,
+                height: window.innerHeight
+            };
+
+            const handleResize = () => {
+                sizes.width = window.innerWidth;
+                sizes.height = window.innerHeight;
+
+                camera.aspect = sizes.width / sizes.height;
+                camera.updateProjectionMatrix();
+
+                renderer.setSize(sizes.width, sizes.height);
+                renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+                
+                parameters.count = window.innerWidth > 768 ? 80000 : 40000;
+                parameters.size = window.innerWidth > 768 ? 0.02 : 0.025;
+                generateGalaxy();
+            };
+
+            window.addEventListener('resize', handleResize);
+
+            const camera = new THREE.PerspectiveCamera(75, sizes.width / sizes.height, 0.1, 100);
+            camera.position.set(4, 4, 4);
+            scene.add(camera);
+
+            const renderer = new THREE.WebGLRenderer({
+                canvas: canvas,
+                antialias: true,
+                alpha: true,
+                powerPreference: "high-performance"
+            });
+            renderer.setSize(sizes.width, sizes.height);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.setClearColor(0x000000, 0);
+
+            const clock = new THREE.Clock();
+            let mouseX = 0;
+            let mouseY = 0;
+
+            document.addEventListener('mousemove', (event) => {
+                mouseX = (event.clientX / window.innerWidth) * 2 - 1;
+                mouseY = -(event.clientY / window.innerHeight) * 2 + 1;
+            });
+
+            const tick = () => {
+                const elapsedTime = clock.getElapsedTime();
+
+                const radius = 6 + Math.sin(elapsedTime * 0.1) * 2;
+                camera.position.x = Math.cos(elapsedTime * 0.05) * radius + mouseX * 2;
+                camera.position.z = Math.sin(elapsedTime * 0.05) * radius + mouseY * 2;
+                camera.position.y = Math.sin(elapsedTime * 0.03) * 3;
+                camera.lookAt(0, 0, 0);
+
+                if(points) {
+                    points.rotation.y = elapsedTime * 0.02;
+                    points.rotation.x = Math.sin(elapsedTime * 0.01) * 0.1;
+                }
+
+                renderer.render(scene, camera);
+                requestAnimationFrame(tick);
+            };
+
+            generateGalaxy();
+            tick();
+        }
+
+        function initLove() {
+            const canvas = document.getElementById('c');
+            const ctx = canvas.getContext('2d');
+            let width, height, hearts = [], particles = [];
+            const numHearts = 32;
+
+            const resizeCanvas = () => {
+                width = canvas.width = window.innerWidth;
+                height = canvas.height = window.innerHeight;
+            };
+
+            const createHeartPath = () => {
+                const hearts = [];
+                for(let i = 0; i < Math.PI * 2; i += 0.2) {
+                    hearts.push([
+                        width/2 + (window.innerWidth > 768 ? 180 : 120) * Math.pow(Math.sin(i), 3),
+                        height/2 + (window.innerWidth > 768 ? 10 : 8) * (-(15*Math.cos(i) - 5*Math.cos(2*i) - 2*Math.cos(3*i) - Math.cos(4*i)))
+                    ]);
+                }
+                return hearts;
+            };
+
+            const initParticles = () => {
+                particles = [];
+                const heartPath = createHeartPath();
+                
+                for(let i = 0; i < numHearts; i++) {
+                    const trail = [];
+                    for(let j = 0; j < numHearts; j++) {
+                        trail.push({
+                            x: Math.random() * width,
+                            y: Math.random() * height,
+                            vx: 0,
+                            vy: 0,
+                            size: (1 - j/numHearts) + 1,
+                            speed: Math.random() + 1,
+                            targetIndex: Math.floor(Math.random() * heartPath.length),
+                            direction: i % 2 * 2 - 1,
+                            friction: Math.random() * 0.2 + 0.7,
+                            hue: i/numHearts * 80 + 280,
+                            saturation: Math.random() * 40 + 60,
+                            brightness: Math.random() * 60 + 40
+                        });
+                    }
+                    particles.push(trail);
+                }
+            };
+
+            const animate = () => {
+                ctx.fillStyle = "rgba(0,0,0,0.02)";
+                ctx.fillRect(0, 0, width, height);
+
+                const heartPath = createHeartPath();
+
+                particles.forEach(trail => {
+                    const leader = trail[0];
+                    const target = heartPath[leader.targetIndex];
+                    const dx = leader.x - target[0];
+                    const dy = leader.y - target[1];
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if(distance < 10) {
+                        if(Math.random() > 0.95) {
+                            leader.targetIndex = Math.floor(Math.random() * heartPath.length);
+                        } else {
+                            if(Math.random() > 0.99) leader.direction *= -1;
+                            leader.targetIndex += leader.direction;
+                            leader.targetIndex = (leader.targetIndex + heartPath.length) % heartPath.length;
+                        }
+                    }
+
+                    leader.vx += -dx / distance * leader.speed;
+                    leader.vy += -dy / distance * leader.speed;
+                    leader.x += leader.vx;
+                    leader.y += leader.vy;
+                    leader.vx *= leader.friction;
+                    leader.vy *= leader.friction;
+
+                    ctx.globalAlpha = 1.0;
+                    ctx.fillStyle = `hsla(${leader.hue}, ${leader.saturation}%, ${leader.brightness}%, 1.0)`;
+                    ctx.shadowColor = `hsla(${leader.hue}, ${leader.saturation}%, ${leader.brightness}%, 0.8)`;
+                    ctx.shadowBlur = 15;
+                    ctx.beginPath();
+                    ctx.arc(leader.x, leader.y, leader.size, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    for(let i = 1; i < trail.length; i++) {
+                        const current = trail[i];
+                        const prev = trail[i - 1];
+                        
+                        current.x -= (current.x - prev.x) * 0.7;
+                        current.y -= (current.y - prev.y) * 0.7;
+
+                        ctx.globalAlpha = 0.8 * (1 - i/trail.length);
+                        ctx.fillStyle = `hsla(${leader.hue}, ${leader.saturation}%, ${leader.brightness}%, 1.0)`;
+                        ctx.shadowBlur = 10;
+                        ctx.beginPath();
+                        ctx.arc(current.x, current.y, current.size, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                    
+                    ctx.shadowBlur = 0;
+                });
+
+                ctx.globalAlpha = 1.0;
+                requestAnimationFrame(animate);
+            };
+
+            resizeCanvas();
+            initParticles();
+            animate();
+
+            window.addEventListener('resize', () => {
+                resizeCanvas();
+                initParticles();
+            });
+        }
+
+        function initCIA() {
+            const canvas = document.getElementById('cia-canvas');
+            const ctx = canvas.getContext('2d');
+            let width, height, dpr = Math.max(1, window.devicePixelRatio || 1);
+
+            let textParticles = [];
+            let explosions = [];
+            let trails = [];
+            let floatingParticles = [];
+            const mouse = { x: -9999, y: -9999, pressed: false };
+
+            const CONFIG = {
+                fontScale: 0.25,
+                gapDesktop: 3,
+                gapMobile: 4,
+                alphaThreshold: 10,
+                particleSizeBase: 1.6,
+                mouseRadius: 140,
+                mouseForce: 0.36,
+                returnForce: 0.055,
+                damping: 0.88,
+                textGlow: 14,
+                clearAlpha: 0.08,
+                letterGapRatio: 0.42
+            };
+
+            const resize = () => {
+                width = canvas.width = Math.floor(window.innerWidth * dpr);
+                height = canvas.height = Math.floor(window.innerHeight * dpr);
+                canvas.style.width = window.innerWidth + 'px';
+                canvas.style.height = window.innerHeight + 'px';
+                createTextParticles();
+                createFloatingParticles();
+            };
+
+            const createTextParticles = () => {
+                textParticles = [];
+
+                const off = document.createElement('canvas');
+                off.width = Math.max(300, width);
+                off.height = Math.max(150, height);
+                const octx = off.getContext('2d');
+
+                octx.scale(dpr, dpr);
+
+                const cssW = off.width / dpr;
+                const cssH = off.height / dpr;
+                const baseFontSize = Math.floor(Math.min(cssW, cssH) * CONFIG.fontScale);
+
+                const fontFamily = `Arial, "Segoe UI", Roboto, sans-serif`;
+                octx.font = `bold ${baseFontSize}px ${fontFamily}`;
+                octx.textAlign = 'center';
+                octx.textBaseline = 'middle';
+
+                const originalWidth = octx.measureText('CIA').width;
+
+                const wC = octx.measureText('C').width;
+                const wI = octx.measureText('I').width;
+                const wA = octx.measureText('A').width;
+
+                const desiredGap = baseFontSize * CONFIG.letterGapRatio;
+
+                const totalLettersWidth = wC + wI + wA + 2 * desiredGap;
+
+                const scaleFactor = originalWidth / (totalLettersWidth || 1);
+
+                const finalFontSize = Math.max(4, Math.floor(baseFontSize * scaleFactor));
+
+                const sWc = wC * scaleFactor;
+                const sWi = wI * scaleFactor;
+                const sWa = wA * scaleFactor;
+                const gap = desiredGap * scaleFactor;
+
+                octx.clearRect(0, 0, off.width, off.height);
+                octx.font = `bold ${finalFontSize}px ${fontFamily}`;
+                octx.textAlign = 'left';
+                octx.textBaseline = 'middle';
+                octx.lineWidth = Math.max(2, Math.round(finalFontSize * 0.12));
+                octx.strokeStyle = '#000';
+                octx.fillStyle = '#fff';
+
+                const totalFinalWidth = sWc + sWi + sWa + 2 * gap;
+                let startX = (cssW - totalFinalWidth) / 2;
+                const centerY = cssH / 2;
+
+                octx.save();
+                octx.translate(0, 0);
+                octx.strokeText('C', startX, centerY);
+                octx.fillText('C', startX, centerY);
+                startX += sWc + gap;
+
+                octx.strokeText('I', startX, centerY);
+                octx.fillText('I', startX, centerY);
+                startX += sWi + gap;
+
+                octx.strokeText('A', startX, centerY);
+                octx.fillText('A', startX, centerY);
+                octx.restore();
+
+                const imageData = octx.getImageData(0, 0, off.width, off.height);
+
+                const sampleGap = window.innerWidth > 768 ? CONFIG.gapDesktop : CONFIG.gapMobile;
+                for (let i = 0; i < imageData.width; i += sampleGap) {
+                    for (let j = 0; j < imageData.height; j += sampleGap) {
+                        const idx = (j * imageData.width + i) * 4;
+                        const alpha = imageData.data[idx + 3];
+                        if (alpha > CONFIG.alphaThreshold) {
+                            const x = i / dpr;
+                            const y = j / dpr;
+                            const hue = 190 + Math.random() * 40;
+                            const light = 55 + Math.random() * 30;
+                            textParticles.push({
+                                x, y,
+                                originX: x,
+                                originY: y,
+                                vx: (Math.random() - 0.5) * 2,
+                                vy: (Math.random() - 0.5) * 2,
+                                size: (Math.random() * 1.8 + 0.8) * CONFIG.particleSizeBase,
+                                color: `hsl(${hue}, 100%, ${light}%)`,
+                                phase: Math.random() * Math.PI * 2,
+                                life: 1
+                            });
+                        }
+                    }
+                }
+            };
+
+            const createFloatingParticles = () => {
+                floatingParticles = [];
+                const count = Math.max(30, Math.floor((window.innerWidth * window.innerHeight) / 120000));
+                for (let i = 0; i < count; i++) {
+                    floatingParticles.push({
+                        x: Math.random() * width / dpr,
+                        y: Math.random() * height / dpr,
+                        vx: (Math.random() - 0.5) * 0.6,
+                        vy: (Math.random() - 0.5) * 0.6,
+                        size: Math.random() * 3 + 0.6,
+                        color: `hsl(${Math.random() * 360}, 70%, 60%)`,
+                        alpha: Math.random() * 0.45 + 0.15
+                    });
+                }
+            };
+
+            const addTrail = (x, y) => {
+                trails.push({
+                    x, y, life: 1,
+                    size: Math.random() * 6 + 2,
+                    color: `hsl(${200 + Math.random() * 60}, 100%, 70%)`
+                });
+                if (trails.length > 40) trails.shift();
+            };
+
+            const createExplosion = (x, y) => {
+                for (let i = 0; i < 26; i++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const speed = Math.random() * 10 + 3;
+                    explosions.push({
+                        x, y,
+                        vx: Math.cos(angle) * speed,
+                        vy: Math.sin(angle) * speed,
+                        size: Math.random() * 4 + 2,
+                        color: `hsl(${180 + Math.random() * 60}, 100%, ${55 + Math.random() * 30}%)`,
+                        life: 1,
+                        decay: 0.02 + Math.random() * 0.02
+                    });
+                }
+            };
+
+            const disperseText = () => {
+                textParticles.forEach(p => {
+                    const angle = Math.random() * Math.PI * 2;
+                    const force = Math.random() * 24 + 6;
+                    p.vx = Math.cos(angle) * force;
+                    p.vy = Math.sin(angle) * force;
+                });
+            };
+
+            const update = () => {
+                textParticles.forEach(p => {
+                    const dx = (mouse.x - p.x);
+                    const dy = (mouse.y - p.y);
+                    const dist = Math.hypot(dx, dy) || 0.0001;
+                    if (dist < CONFIG.mouseRadius) {
+                        const force = (CONFIG.mouseRadius - dist) / CONFIG.mouseRadius;
+                        p.vx -= (dx / dist) * force * CONFIG.mouseForce;
+                        p.vy -= (dy / dist) * force * CONFIG.mouseForce;
+                    }
+
+                    p.vx += (p.originX - p.x) * CONFIG.returnForce;
+                    p.vy += (p.originY - p.y) * CONFIG.returnForce;
+
+                    p.phase += 0.06;
+                    p.y += Math.sin(p.phase) * 0.25;
+
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    p.vx *= CONFIG.damping;
+                    p.vy *= CONFIG.damping;
+                });
+
+                floatingParticles.forEach(fp => {
+                    fp.x += fp.vx;
+                    fp.y += fp.vy;
+                    if (fp.x < -50) fp.x = width / dpr + 50;
+                    if (fp.x > width / dpr + 50) fp.x = -50;
+                    if (fp.y < -50) fp.y = height / dpr + 50;
+                    if (fp.y > height / dpr + 50) fp.y = -50;
+                });
+
+                explosions = explosions.filter(e => {
+                    e.x += e.vx;
+                    e.y += e.vy;
+                    e.vx *= 0.98;
+                    e.vy *= 0.98;
+                    e.life -= e.decay;
+                    return e.life > 0;
+                });
+
+                trails = trails.filter(t => {
+                    t.life -= 0.04;
+                    return t.life > 0;
+                });
+            };
+
+            const draw = () => {
+                ctx.clearRect(0, 0, width, height);
+                ctx.fillStyle = `rgba(0,0,0,${CONFIG.clearAlpha})`;
+                ctx.fillRect(0, 0, width, height);
+
+                trails.forEach(t => {
+                    ctx.globalAlpha = Math.min(1, t.life * 0.9);
+                    ctx.fillStyle = t.color;
+                    ctx.beginPath();
+                    ctx.arc(t.x * dpr, t.y * dpr, t.size * t.life * dpr, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+
+                floatingParticles.forEach(fp => {
+                    ctx.globalAlpha = fp.alpha;
+                    ctx.beginPath();
+                    ctx.arc(fp.x * dpr, fp.y * dpr, fp.size * dpr, 0, Math.PI * 2);
+                    ctx.fillStyle = fp.color;
+                    ctx.fill();
+                });
+
+                textParticles.forEach(p => {
+                    ctx.save();
+                    ctx.globalAlpha = 0.98;
+                    ctx.fillStyle = p.color;
+                    ctx.shadowColor = p.color;
+                    ctx.shadowBlur = CONFIG.textGlow;
+                    ctx.beginPath();
+                    ctx.arc(p.x * dpr, p.y * dpr, p.size * dpr, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+                });
+
+                explosions.forEach(e => {
+                    ctx.globalAlpha = e.life;
+                    ctx.fillStyle = e.color;
+                    ctx.shadowColor = e.color;
+                    ctx.shadowBlur = 20;
+                    ctx.beginPath();
+                    ctx.arc(e.x * dpr, e.y * dpr, e.size * dpr, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+                });
+
+                ctx.globalAlpha = 1;
+            };
+
+            const animate = () => {
+                update();
+                draw();
+                requestAnimationFrame(animate);
+            };
+
+            const handleMouseMove = (e) => {
+                mouse.x = e.clientX;
+                mouse.y = e.clientY;
+                addTrail(e.clientX, e.clientY);
+            };
+
+            const handleMouseLeave = () => {
+                mouse.x = -9999;
+                mouse.y = -9999;
+            };
+
+            const handleClick = (e) => {
+                createExplosion(e.clientX, e.clientY);
+                disperseText();
+            };
+
+            const handleTouchStart = (e) => {
+                e.preventDefault();
+                const t = e.touches[0];
+                mouse.x = t.clientX;
+                mouse.y = t.clientY;
+                createExplosion(t.clientX, t.clientY);
+            };
+
+            const handleTouchMove = (e) => {
+                e.preventDefault();
+                const t = e.touches[0];
+                mouse.x = t.clientX;
+                mouse.y = t.clientY;
+                addTrail(t.clientX, t.clientY);
+            };
+
+            canvas.addEventListener('mousemove', handleMouseMove);
+            canvas.addEventListener('mouseleave', handleMouseLeave);
+            canvas.addEventListener('click', handleClick);
+            canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+            canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+
+            window.addEventListener('resize', () => {
+                dpr = Math.max(1, window.devicePixelRatio || 1);
+                resize();
+            });
+
+            resize();
+            animate();
+
+            return {
+                setClearAlpha(a) { CONFIG.clearAlpha = Math.max(0, Math.min(1, a)); },
+                setGlow(v) { CONFIG.textGlow = v; },
+                setLetterGapRatio(r) { CONFIG.letterGapRatio = r; createTextParticles(); },
+                setDensity(isDense) {
+                    CONFIG.gapDesktop = isDense ? 2 : 4;
+                    createTextParticles();
+                }
+            };
+        }
+
+        const createCursorTrail = () => {
+            let trails = [];
+            
+            document.addEventListener('mousemove', (e) => {
+                const trail = document.createElement('div');
+                trail.className = 'cursor-trail';
+                trail.style.left = e.clientX + 'px';
+                trail.style.top = e.clientY + 'px';
+                document.body.appendChild(trail);
+                
+                trails.push(trail);
+                
+                setTimeout(() => {
+                    trail.style.opacity = '0';
+                    trail.style.transform = 'scale(0)';
+                    setTimeout(() => {
+                        if(trail.parentNode) {
+                            trail.parentNode.removeChild(trail);
+                        }
+                        trails = trails.filter(t => t !== trail);
+                    }, 300);
+                }, 50);
+                
+                if(trails.length > 15) {
+                    const oldTrail = trails.shift();
+                    if(oldTrail && oldTrail.parentNode) {
+                        oldTrail.parentNode.removeChild(oldTrail);
+                    }
+                }
+            });
+        };
+
+        const initAllSystems = () => {
+            if (typeof THREE !== 'undefined') {
+                initGalaxy();
+            } else {
+                setTimeout(() => {
+                    if (typeof THREE !== 'undefined') {
+                        initGalaxy();
+                    }
+                }, 1000);
+            }
+
+            initLove();
+            initCIA();
+            createCursorTrail();
+        };
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initAllSystems);
+        } else {
+            initAllSystems();
+        }
+    </script>
+</body>
+</html>
